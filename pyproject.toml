@@ -1,0 +1,48 @@
+[project]
+name = "iasd_kaggle_hw_1"
+version = "0.1.0"
+description = "kaggle project"
+authors = ["Brice Convers <brice.convers@entropy.sc>"]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "catboost>=1.2.5",
+    "featuretools>=1.31.0",
+    "imblearn>=0.0",
+    "ipykernel>=6.29.5",
+    "lightgbm>=4.6.0",
+    "matplotlib>=3.10.1",
+    "numpy<=1.26",
+    "pandas>=1.5.3",
+    "pyyaml>=6.0.2",
+    "scikit-learn>=1.6.1",
+    "scipy>=1.15.2",
+    "seaborn>=0.13.2",
+    "setuptools>=78.1.0",
+    "tornado>=6.4.2",
+    "xgboost>=3.0.0",
+]
+
+[tool.ruff]
+# Set the maximum line length to 79.
+line-length = 79
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
+# Add the `line-too-long` rule to the enforced rule set. By default, Ruff omits rules that
+# overlap with the use of a formatter, like Black, but we can override this behavior by
+# explicitly adding the rule.
+#extend-select = ["E501"]

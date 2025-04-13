@@ -1,0 +1,9 @@
+path:
+  train_path: "data/train.csv"
+  test_path: "data/test.csv"
+  processed_data: "data/processed/"
+  raw_data_figures: "figures/raw_data"
+
+FEATURE_ENGINEERING:
+  version: 1.0
+  mode: "featuretools" # or "manual"
