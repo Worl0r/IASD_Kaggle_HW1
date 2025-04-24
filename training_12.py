@@ -167,42 +167,41 @@ def tune_hyperparameters(X, y, model_name, model):
     param_grid = None
     
 
-    if model_name == "catboost":
-        param_grid = {
-            'learning_rate': uniform(0.01, 0.1),
-            'depth': randint(6, 10),
-            'l2_leaf_reg': uniform(5, 10),
-            'iterations': randint(150, 400),
-            # 'scale_pos_weight': [5, 10, 15, 20, 25, 30, 35]
-            # 'bagging_temperature': [0.5, 1, 2],
-        }
-    if model_name == "logreg":
-        param_grid = {
-            'C': uniform(4, 10),
-            'penalty': ['l2'],
-            'solver': ['newton-cholesky'],
-            # 'l1_ratio': uniform(0, 1) if 'elasticnet' else None,
-            'max_iter': [3500, 4000],
-        }
-    elif model_name == "mlp":
-        param_grid = {
-            'hidden_layer_sizes': [(128,)],
-            'activation': ['relu'],
-            'alpha': uniform(0.005, 0.02),
-            'learning_rate_init': uniform(0.001, 0.01),
-            'max_iter': [800, 1200, 1600]
-        }
-    elif model_name == "xgb":
-        param_grid = {
-            'learning_rate': uniform(0.01, 0.05),
-            'n_estimators': randint(150, 250),
-            'max_depth': randint(4, 10),
-            'subsample': uniform(0.6, 0.4),
-            'colsample_bytree': uniform(0.6, 0.4),
-            'gamma': uniform(0, 0.5),
-            'min_child_weight': randint(4, 10),
-            'scale_pos_weight': [5, 10, 15, 20, 25, 30, 35]
-        }
+    # if model_name == "catboost":
+    #     param_grid = {
+    #         'learning_rate': uniform(0.01, 0.1),
+    #         'depth': randint(6, 10),
+    #         'l2_leaf_reg': uniform(5, 10),
+    #         'iterations': randint(150, 400),
+    #         # 'bagging_temperature': [0.5, 1, 2],
+    #     }
+    # if model_name == "logreg":
+    #     param_grid = {
+    #         'C': uniform(5, 10),
+    #         # 'penalty': ['l2'],
+    #         # 'solver': ['newton-cholesky'],
+    #         # 'l1_ratio': uniform(0, 1) if 'elasticnet' else None,
+    #         # 'max_iter': [3500, 4000],
+    #     }
+    # elif model_name == "mlp":
+    #     param_grid = {
+    #         'hidden_layer_sizes': [(128,)],
+    #         'activation': ['relu'],
+    #         'alpha': uniform(0.005, 0.02),
+    #         'learning_rate_init': uniform(0.001, 0.01),
+    #         # 'max_iter': [800, 1200, 1600]
+    #     }
+    # elif model_name == "xgb":
+    #     param_grid = {
+    #         'learning_rate': uniform(0.01, 0.05),
+    #         # 'n_estimators': randint(150, 250),
+    #         # 'max_depth': randint(4, 10),
+    #         # 'subsample': uniform(0.6, 0.4),
+    #         # 'colsample_bytree': uniform(0.6, 0.4),
+    #         # 'gamma': uniform(0, 0.5),
+    #         # 'min_child_weight': randint(4, 10),
+    #         # 'scale_pos_weight': [5, 10, 15, 20, 25, 30, 35]
+    #     }
     
     if param_grid is None:
         logger.info(f"No parameter grid defined for {model_name}. Skipping tuning.")
@@ -278,38 +277,38 @@ def main():
         ("catboost", CatBoostClassifier(
             verbose=0, 
             random_state=42,
-            # scale_pos_weight=5,
-            # iterations=170,
-            # depth=6,
-            # l2_leaf_reg=6.56,
-            # learning_rate=0.0256,
+            scale_pos_weight=5,
+            iterations=360,
+            depth=9,
+            l2_leaf_reg=10.2,
+            learning_rate=0.106,
             )),
         ("logreg", LogisticRegression(
             class_weight="balanced", 
             random_state=42, 
-            # max_iter = 3500,
-            # solver="newton-cholesky",
-            # penalty="l2",
-            # C=7.454,    # pas sur.
+            max_iter = 5000,
+            solver="newton-cholesky",
+            penalty="l2",
+            C=5,    # pas sur.
             )),
         ("mlp", MLPClassifier(
             random_state=42,
-            # alpha=0.012903,
-            # max_iter=1600,
-            # activation="relu",
-            # hidden_layer_sizes=(128,),
-            # learning_rate_init=0.01027,
+            max_iter=1500,
+            activation="relu",
+            alpha=0.0059,
+            hidden_layer_sizes=(128,),
+            learning_rate_init=0.0043,
             )),
         ("xgb", XGBClassifier(
             random_state=42,
-            # max_depth=7,
-            # n_estimators=200,
-            # min_child_weight=5,
-            # scale_pos_weight=5,
-            # learning_rate=0.04479,
-            # subsample=0.6967,
-            # colsample_bytree=0.6836,
-            # gamma=0.2707,
+            max_depth=5,
+            n_estimators=200,
+            min_child_weight=8,
+            scale_pos_weight=5,
+            learning_rate=0.011,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            gamma=0.4,
             )),
     ]
 
@@ -340,7 +339,7 @@ def main():
             calibrated_model = CalibratedClassifierCV(
                 estimator=model,
                 method='isotonic',  # or 'sigmoid'
-                cv=3
+                cv=5
             )
             calibrated_model.fit(X_train, y_train)
 
@@ -428,7 +427,7 @@ def main():
 
     # Create submission file
     submission = pd.DataFrame({"ID": test_ids, "TARGET": final_preds})
-    submission.to_csv("output/submission_training_12_8.csv", index=False)
+    submission.to_csv("output/submission_training_12_2.csv", index=False)
 
 
 if __name__ == "__main__":
