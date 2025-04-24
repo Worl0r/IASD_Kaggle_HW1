@@ -1,14 +1,6 @@
 from os import ftruncate
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.utils.validation import _num_features
-from xgboost import XGBRegressor
-from lightgbm import LGBMRegressor
-from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_squared_error
-from imblearn.over_sampling import SMOTE
 import lightgbm as lgb
 from utils import get_logger, load_config
 import matplotlib.pyplot as plt
@@ -16,6 +8,11 @@ import seaborn as sns
 import featuretools as ft
 import matplotlib
 import pickle
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("WebAgg")
 logger = get_logger()
@@ -23,16 +20,84 @@ logger = get_logger()
 cfg = load_config("configuration.yaml")
 
 
+def remove_outliers(df, column_name, iqr_multiplier=2):
+    # From: https://www.kaggle.com/code/python4sp/credit-scoring-end-to-end-auto-submit-g-c
+    q1 = df[column_name].quantile(0.25)
+    q3 = df[column_name].quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - iqr_multiplier * iqr
+    upper_bound = q3 + iqr_multiplier * iqr
+    df = df[
+        (df[column_name] >= lower_bound) & (df[column_name] <= upper_bound)
+    ]
+    return df
+
+
 def feature_engineering(
-    train, train_original, log_col, product_col, divided_col
+    train,
+    train_original,
+    log_col,
+    product_col,
+    divided_col,
+    mode,
+    iqr_multiplier,
 ):
+    exclude_col = [
+        "ID",
+        "TARGET",
+    ]
+
+    features_col = train.columns.tolist()
+    logger.info(f"🔍 {len(features_col)} columns in the dataset")
+
     ## Feature Engineering
     # Indication of missing values
-    train["missing_var5"] = train["var5"].isnull().astype(int)
-    train["missing_var10"] = train["var10"].isnull().astype(int)
+    missing_var5 = train["var5"].isna()
 
     # Fill missing values with mean
-    train["var5"] = train["var5"].fillna(train["var5"].mean())
+    si = SimpleImputer(strategy="mean").fit(train[["var5"]])
+    train["var5"] = si.transform(train[["var5"]])
+
+    # TODO: Remove when var5 is zero ?
+
+    # Adjust var10: The debt ratio
+    train.loc[missing_var5, "var4"] = (
+        train.loc[missing_var5, "var4"] / train.loc[missing_var5, "var5"]
+    )
+
+    # Remove outliers for debt ratio
+    # if mode == "train":
+    # logger.info(f"Shape before outlier removal: {train.shape}")
+    # for col in features_col:
+    #     if col in exclude_col:
+    #         continue
+    #     train = remove_outliers(train, col, iqr_multiplier=iqr_multiplier)
+
+    # logger.info(f"Shape after outlier removal: {train.shape}")
+
+    # # TODO: Custom
+    # train.drop(
+    #     train[(train["var3"] > 50) & (train["TARGET"] == 0)].index,
+    #     inplace=True,
+    # )
+    # train.drop(
+    #     train[(train.var4 > 5) & (train["TARGET"] == 0)].index,
+    #     inplace=True,
+    # )
+    # train.drop(
+    #     train[(train.var5 > 30000) & (train["TARGET"] == 0)].index,
+    #     inplace=True,
+    # )
+    # train.drop(
+    #     train[(train.var6 > 20) & (train["TARGET"] == 0)].index,
+    #     inplace=True,
+    # )
+    # train.drop(
+    #     train[(train.var10 > 6) & (train["TARGET"] == 0)].index,
+    #     inplace=True,
+    # )
+
+    # Replace na values
     train["var10"] = train["var10"].fillna(0)
 
     # Log transform for skewed variables
@@ -61,6 +126,16 @@ def feature_engineering(
             train[f"{col}_divided_{col2}"] = train[col] / (train[col2] + 1e-5)
             train[f"{col}_product_{col2}"] = train[col] * (train[col2] + 1e-5)
 
+    # Standardization
+    # scaler = StandardScaler()
+
+    # keep_cols = train[exclude_col].reset_index(drop=True)
+    # train = pd.DataFrame(
+    #     scaler.fit_transform(train.drop(columns=exclude_col)),
+    #     columns=[col for col in train.columns if not col in exclude_col],
+    # )
+    # train[exclude_col] = keep_cols
+
     # Summary
     logger.info(
         f"{train.shape[1] - train_original.shape[1]}"
@@ -70,7 +145,6 @@ def feature_engineering(
         f"Aperçu des nouvelles colonnes :"
         f" {train.columns.difference(train_original.columns).tolist()}"
     )
-    logger.info(train.head())
 
     return train
 
@@ -85,34 +159,46 @@ def plot_corr_matrix(corr_matrix, filename):
     plt.close()
 
 
-def remove_highly_correlated_features(X, threshold=0.9, plot=True):
-    corr_matrix = X.corr().abs()
-    upper = corr_matrix.where(
-        np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
-    )
-
-    to_drop = [
-        column for column in upper.columns if any(upper[column] > threshold)
-    ]
-
-    logger.info(
-        f"🔍 {len(to_drop)} colonnes supprimées pour forte corrélation (> {threshold})"
-    )
-
-    X = X.drop(columns=to_drop)
-
-    # Plot correlation matrix
-    if plot:
-        plot_corr_matrix(
-            corr_matrix,
-            filename="corr_matrix",
-        )
-        plot_corr_matrix(
-            X.corr().abs(),
-            filename=f"corr_matrix_{len(to_drop)}_features_dropped",
+def remove_highly_correlated_features(
+    X, threshold=0.9, plot=True, col_test_to_drop=None
+):
+    if col_test_to_drop is None:
+        corr_matrix = X.corr().abs()
+        upper = corr_matrix.where(
+            np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
         )
 
-    return X, to_drop
+        to_drop = [
+            column
+            for column in upper.columns
+            if any(upper[column] > threshold) and column != "ID"
+        ]
+
+        logger.info(
+            f"🔍 {len(to_drop)} colonnes supprimées"
+            f" pour forte corrélation (> {threshold})"
+        )
+
+        X = X.drop(columns=to_drop)
+
+        # Plot correlation matrix
+        if plot:
+            plot_corr_matrix(
+                corr_matrix,
+                filename="corr_matrix",
+            )
+            plot_corr_matrix(
+                X.corr().abs(),
+                filename=f"corr_matrix_{len(to_drop)}_features_dropped",
+            )
+
+        return X, to_drop
+    else:
+        logger.info(
+            f"🔍 {len(col_test_to_drop)} colonnes supprimées pour"
+            f"forte corrélation dans train dataset"
+        )
+        return X.drop(columns=col_test_to_drop), col_test_to_drop
 
 
 def select_important_features(X, y, lgb_params, num_top_features):
@@ -131,17 +217,34 @@ def select_important_features(X, y, lgb_params, num_top_features):
 
 
 def pipeline(
-    df, df_original, y, log_col, product_col, divided_col, lgb_params
+    df,
+    df_original,
+    log_col,
+    product_col,
+    divided_col,
+    col_test_to_drop,
+    iqr_multiplier,
 ):
+    mode = "train" if col_test_to_drop is None else "test"
+
     df = feature_engineering(
-        df, df_original, log_col, product_col, divided_col
+        df,
+        df_original,
+        log_col,
+        product_col,
+        divided_col,
+        mode,
+        iqr_multiplier,
     )
 
     df, col_to_drop = remove_highly_correlated_features(
-        df, threshold=0.9, plot=False
+        df,
+        threshold=0.9,
+        plot=False,
+        col_test_to_drop=col_test_to_drop,
     )
 
-    return df
+    return df, col_to_drop
 
 
 def use_featuretools(df_train, df_test, lgb_params, num_top_features):
@@ -194,7 +297,9 @@ def use_featuretools(df_train, df_test, lgb_params, num_top_features):
     feature_matrix_test = feature_matrix_test.reset_index(drop=True)
 
     X_generated, col_to_drop = remove_highly_correlated_features(
-        X_generated, threshold=0.9, plot=False
+        X_generated,
+        threshold=0.9,
+        plot=False,
     )
     feature_matrix_test = feature_matrix_test.drop(
         columns=col_to_drop, errors="ignore"
@@ -227,25 +332,33 @@ def use_manual_feature_engineering(
     log_col,
     product_col,
     divided_col,
-    lgb_params,
+    iqr_multiplier,
 ):
     train_original = train.copy()
     test_original = test.copy()
 
-    y = train["TARGET"]
-    train = train.drop(columns=["TARGET", "ID"])
-    test = test.drop(columns=["ID"])
-
-    pip_train = pipeline(
-        train, train_original, y, log_col, product_col, divided_col, lgb_params
+    pip_train, col_to_drop = pipeline(
+        train,
+        train_original,
+        log_col,
+        product_col,
+        divided_col,
+        None,
+        iqr_multiplier,
     )
-    pip_test = pipeline(
-        test, test_original, y, log_col, product_col, divided_col, lgb_params
+    pip_test, _ = pipeline(
+        test,
+        test_original,
+        log_col,
+        product_col,
+        divided_col,
+        col_to_drop,
+        None,
     )
 
-    pip_train = pd.concat([train_original["ID"], pip_train], axis=1)
-    pip_train = pd.concat([pip_train, y], axis=1)
-    pip_test = pd.concat([test_original["ID"], pip_test], axis=1)
+    assert pip_train.drop(columns=["TARGET"]).columns.equals(
+        pip_test.columns
+    ), "Les colonnes de train et test ne sont pas les mêmes !"
 
     return pip_train, pip_test
 
@@ -280,6 +393,7 @@ def main():
         log_col = ["var5", "var1", "var4"]
         product_col = ["var5", "var4"]  # train.columns
         divided_col = ["var6", "var10", "var2", "var5"]  # train.columns
+        iqr_multiplier = 2.5
 
         pip_train, pip_test = use_manual_feature_engineering(
             train,
@@ -287,13 +401,20 @@ def main():
             log_col,
             product_col,
             divided_col,
-            lgb_params,
+            iqr_multiplier,
         )
     else:
         raise ValueError(
             "Mode de feature engineering non reconnu. "
             "Veuillez choisir entre 'featuretools' ou 'manual'."
         )
+    # Checking
+    logger.info(
+        f"Summary of the nan values in the train set: {pip_train.isna().sum()}"
+    )
+    logger.info(
+        f"Summary of the nan values in the test set: {pip_test.isna().sum()}"
+    )
 
     # Save
     pip_train.to_csv(f"./data/processed/train_{version}.csv", index=False)

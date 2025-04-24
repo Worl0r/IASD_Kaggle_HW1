@@ -31,6 +31,10 @@ from sklearn.metrics import (
     f1_score,
     log_loss,
 )
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import AdaBoostClassifier, ExtraTreesClassifier
 
 import matplotlib
 
@@ -112,41 +116,9 @@ def main():
     y = train["TARGET"]
     X = train.drop(columns=["TARGET"])
 
-    X = X.fillna(X.median())
-    test = test.fillna(test.median())
-
-    column_to_drop = [
-        col for col in ["ID", "var1", "var9"] if col in X.columns
-    ]
     test_ids = test["ID"]
-    X = X.drop(columns=column_to_drop)
-    test = test.drop(columns=column_to_drop)
-
-    # SMOTE
-    # smote = SMOTE(random_state=42)
-    # X, y = smote.fit_resample(X, y)
-
-    # Upsampling
-    # X_minority = X[y==1]
-    # y_minority = y[y == 1]
-
-    # # Duplication des échantillons minoritaires
-    # X_minority_upsampled, y_minority_upsampled = resample(X_minority, y_minority,
-    # replace=True,
-    # n_samples=X[y == 0].shape[0],
-    # random_state=42)
-
-    # # Combinaison des échantillons
-    # X_upsampled = np.vstack((X, X_minority_upsampled))
-    # y_upsampled = np.hstack((y, y_minority_upsampled))
-
-    # Scaling
-    # min_max_scaler = MinMaxScaler()
-    # columns = X.columns
-    # X = min_max_scaler.fit_transform(X)
-    # X = pd.DataFrame(X, columns=columns)
-    # test = min_max_scaler.transform(test)
-    # test = pd.DataFrame(test, columns=columns)
+    X = X.drop(columns=["ID"])
+    test = test.drop(columns=["ID"])
 
     X = pd.get_dummies(X)
     test = pd.get_dummies(test)
@@ -171,17 +143,53 @@ def main():
     #     ("svc", SVC(probability=True, random_state=42)),
     #     ("gb", GradientBoostingClassifier(n_estimators=100, random_state=42))
     # ]
+    # base_models = [
+    #     ("lgbm", LGBMClassifier(random_state=42)),
+    #     ("catboost", CatBoostClassifier(verbose=0, random_state=42)),
+    #     ("logreg", LogisticRegression(max_iter=1000, class_weight="balanced")),
+    #     # (
+    #     #     "mlp",
+    #     #     MLPClassifier(
+    #     #         hidden_layer_sizes=(128,), max_iter=600, random_state=42
+    #     #     ),
+    #     # ),
+    #     ("xgb", XGBClassifier(random_state=42, np_estimators=200)),
+    # ]
+
     base_models = [
-        ("lgbm", LGBMClassifier(random_state=42)),
-        ("catboost", CatBoostClassifier(verbose=0, random_state=42)),
-        ("logreg", LogisticRegression(max_iter=1000, class_weight="balanced")),
         (
-            "mlp",
-            MLPClassifier(
-                hidden_layer_sizes=(128,), max_iter=600, random_state=42
+            "LR",
+            LogisticRegression(**{"C": 0.7678243129497218, "penalty": "l1"}),
+        ),
+        ("KNN", KNeighborsClassifier(n_neighbors=15)),
+        (
+            "CART",
+            DecisionTreeClassifier(
+                **{
+                    "criterion": "gini",
+                    "max_depth": 3,
+                    "max_features": 2,
+                    "min_samples_leaf": 3,
+                }
             ),
         ),
-        ("xgb", XGBClassifier(random_state=42, np_estimators=200)),
+        ("NB", GaussianNB()),
+        (
+            "SVM",
+            SVC(**{"C": 1.7, "kernel": "linear", "probability": True}),
+        ),
+        (
+            "AB",
+            AdaBoostClassifier(**{"learning_rate": 0.05, "n_estimators": 150}),
+        ),
+        (
+            "GBM",
+            GradientBoostingClassifier(
+                **{"learning_rate": 0.01, "n_estimators": 100}
+            ),
+        ),
+        ("RF", RandomForestClassifier()),
+        ("ET", ExtraTreesClassifier()),
     ]
 
     S_train = np.zeros((X.shape[0], len(base_models)))
@@ -245,7 +253,11 @@ def main():
     final_preds = meta_model.predict(S_test)
 
     submission = pd.DataFrame({"id": test_ids, "target": final_preds})
-    submission.to_csv("output/submission_2.0.0.csv", index=False)
+    submission.to_csv(
+        f"output/submission_"
+        f"{str(cfg['FEATURE_ENGINEERING']['version']) + str(cfg['FEATURE_ENGINEERING']['version_training'])}.csv",
+        index=False,
+    )
 
 
 if __name__ == "__main__":
