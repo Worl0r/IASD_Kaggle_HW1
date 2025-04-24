@@ -25,7 +25,6 @@ from scipy.stats import randint, uniform
 from sklearn.calibration import CalibratedClassifierCV
 
 
-
 import matplotlib
 
 matplotlib.use("WebAgg")
@@ -49,20 +48,20 @@ def feature_engineering(df_train, df_test):
     # 1. MISSING VALUES TREATMENT
     for col in ["var5", "var10"]:
         # Create missing flags
-        df_train[f'{col}_missing'] = df_train[col].isna().astype(int)
-        df_test[f'{col}_missing'] = df_test[col].isna().astype(int)
-        
+        df_train[f"{col}_missing"] = df_train[col].isna().astype(int)
+        df_test[f"{col}_missing"] = df_test[col].isna().astype(int)
+
         # Create and fit imputer on training data
-        imputer = SimpleImputer(strategy='median')
+        imputer = SimpleImputer(strategy="median")
         imputer.fit(df_train[[col]])
-        
+
         # Transform both training and test data using the same fitted imputer
         df_train[col] = imputer.transform(df_train[[col]])
         df_test[col] = imputer.transform(df_test[[col]])
 
     # convert var10 to int64
-    df_train["var10"] = df_train["var10"].astype('int64')
-    df_test["var10"] = df_test["var10"].astype('int64')
+    df_train["var10"] = df_train["var10"].astype("int64")
+    df_test["var10"] = df_test["var10"].astype("int64")
 
     # 2. OUTLIER TREATMENT
     # Cap outliers at percentiles instead of removing them - 1% most extreme values
@@ -70,24 +69,30 @@ def feature_engineering(df_train, df_test):
         # Get 1st and 99th percentiles
         p01 = df_train[col].quantile(0.0)
         p99 = df_train[col].quantile(0.99)
-        
+
         # Cap values
         df_train[col] = df_train[col].clip(p01, p99)
         df_test[col] = df_test[col].clip(p01, p99)
-
 
     # 3. FEATURE TRANSFORMATIONS
     # Apply log transformation to highly skewed variables
     # for col in ["var1", "var4", "var5"]:
     for col in ["var1", "var4"]:
-        df_train[f'{col}_log'] = np.log(df_train[col] + 1)  # Adding 1 to avoid log(0)
-        df_test[f'{col}_log'] = np.log(df_test[col] + 1)  # Adding 1 to avoid log(0)
-
+        df_train[f"{col}_log"] = np.log(
+            df_train[col] + 1
+        )  # Adding 1 to avoid log(0)
+        df_test[f"{col}_log"] = np.log(
+            df_test[col] + 1
+        )  # Adding 1 to avoid log(0)
 
     # Apply Box-Cox transformation to normalize distributions
-    pt = PowerTransformer(method='box-cox')
+    pt = PowerTransformer(method="box-cox")
     # box_cox_cols = ['var2', 'var6']  # Columns identified with extreme values
-    box_cox_cols = ['var2', 'var6', "var5"]  # Columns identified with extreme values
+    box_cox_cols = [
+        "var2",
+        "var6",
+        "var5",
+    ]  # Columns identified with extreme values
 
     # Create a temporary array for fitting the transformer (Box-Cox needs positive values)
     temp_train_data = df_train[box_cox_cols].copy()
@@ -100,54 +105,66 @@ def feature_engineering(df_train, df_test):
 
     # Fit on training data, transform both training and test data
     transformed_train_data = pt.fit_transform(temp_train_data)
-    transformed_test_data = pt.transform(temp_test_data)  # Only transform, not fit_transform
+    transformed_test_data = pt.transform(
+        temp_test_data
+    )  # Only transform, not fit_transform
 
     # Add the transformed columns to the dataframes
     for i, col in enumerate(box_cox_cols):
-        df_train[f'{col}_boxcox'] = transformed_train_data[:, i]
-        df_test[f'{col}_boxcox'] = transformed_test_data[:, i]
-
+        df_train[f"{col}_boxcox"] = transformed_train_data[:, i]
+        df_test[f"{col}_boxcox"] = transformed_test_data[:, i]
 
     # 4. FEATURE SCALING - Added as requested
     # Apply standard scaling to all numerical features
     scaler = StandardScaler()
-    
+
     # Identify numerical columns to scale (original and derived)
     # scale_cols = num_cols + [f'{col}_log' for col in ["var1", "var4", "var5"]] + [f'{col}_boxcox' for col in box_cox_cols]
-    scale_cols = [f'{col}_log' for col in ["var1", "var4"]] + [f'{col}_boxcox' for col in box_cox_cols]
-    
+    scale_cols = [f"{col}_log" for col in ["var1", "var4"]] + [
+        f"{col}_boxcox" for col in box_cox_cols
+    ]
+
     # Fit scaler on training data
     scaler.fit(df_train[scale_cols])
-    
+
     # Transform both training and test data
     scaled_train_data = scaler.transform(df_train[scale_cols])
     scaled_test_data = scaler.transform(df_test[scale_cols])
-    
+
     # Add scaled features to dataframes
     for i, col in enumerate(scale_cols):
-        df_train[f'{col}_scaled'] = scaled_train_data[:, i]
-        df_test[f'{col}_scaled'] = scaled_test_data[:, i]
-
+        df_train[f"{col}_scaled"] = scaled_train_data[:, i]
+        df_test[f"{col}_scaled"] = scaled_test_data[:, i]
 
     # 6. BINNING
     # Create binned versions of numerical variables
     for col in num_cols:
         # Create 5 bins based on quantiles
-        df_train[f'{col}_bin'] = pd.qcut(df_train[col], q=5, labels=False, duplicates='drop')
-        
+        df_train[f"{col}_bin"] = pd.qcut(
+            df_train[col], q=5, labels=False, duplicates="drop"
+        )
+
         # Get the bin edges from the training set
-        bin_edges = pd.qcut(df_train[col], q=5, retbins=True, duplicates='drop')[1]
-        
+        bin_edges = pd.qcut(
+            df_train[col], q=5, retbins=True, duplicates="drop"
+        )[1]
+
         # Apply same binning to test set
-        df_test[f'{col}_bin'] = pd.cut(df_test[col], bins=bin_edges, labels=False, include_lowest=True)
-        
+        df_test[f"{col}_bin"] = pd.cut(
+            df_test[col], bins=bin_edges, labels=False, include_lowest=True
+        )
+
         # Handle potential NaNs from binning
-        df_train[f'{col}_bin'] = df_train[f'{col}_bin'].fillna(-1).astype(int)
-        df_test[f'{col}_bin'] = df_test[f'{col}_bin'].fillna(-1).astype(int)
+        df_train[f"{col}_bin"] = df_train[f"{col}_bin"].fillna(-1).astype(int)
+        df_test[f"{col}_bin"] = df_test[f"{col}_bin"].fillna(-1).astype(int)
 
     for col in ["var3", "var7", "var8", "var9", "var10"]:
-        df_train[f'{col}_threshold'] = df_train[col].apply(lambda x: x if x <= 3  else 4)
-        df_test[f'{col}_threshold'] = df_test[col].apply(lambda x: x if x <= 3 else 4)
+        df_train[f"{col}_threshold"] = df_train[col].apply(
+            lambda x: x if x <= 3 else 4
+        )
+        df_test[f"{col}_threshold"] = df_test[col].apply(
+            lambda x: x if x <= 3 else 4
+        )
 
     df_train = df_train.drop(columns=num_cols)
     df_test = df_test.drop(columns=num_cols)
@@ -163,9 +180,8 @@ def tune_hyperparameters(X, y, model_name, model):
     Perform hyperparameter tuning using RandomizedSearchCV
     """
     logger.info(f"Tuning hyperparameters for {model_name}...")
-    
+
     param_grid = None
-    
 
     # if model_name == "catboost":
     #     param_grid = {
@@ -202,11 +218,13 @@ def tune_hyperparameters(X, y, model_name, model):
     #         # 'min_child_weight': randint(4, 10),
     #         # 'scale_pos_weight': [5, 10, 15, 20, 25, 30, 35]
     #     }
-    
+
     if param_grid is None:
-        logger.info(f"No parameter grid defined for {model_name}. Skipping tuning.")
+        logger.info(
+            f"No parameter grid defined for {model_name}. Skipping tuning."
+        )
         return model
-    
+
     # Define the randomized search
     random_search = RandomizedSearchCV(
         estimator=model,
@@ -216,24 +234,28 @@ def tune_hyperparameters(X, y, model_name, model):
         verbose=1,
         random_state=42,
         n_jobs=-1,  # Use all available cores
-        scoring='neg_mean_squared_error',  # Use AUC as the scoring metric
-        error_score='raise',  # Raise errors instead of setting scores to NaN
+        scoring="neg_mean_squared_error",  # Use AUC as the scoring metric
+        error_score="raise",  # Raise errors instead of setting scores to NaN
     )
-    
+
     # Fit the randomized search
     random_search.fit(X, y)
-    
+
     # Log the best parameters and score
-    logger.info(f"Best parameters for {model_name}: {random_search.best_params_}")
-    logger.info(f"Best score for {model_name}: {random_search.best_score_:.4f}")
-    
+    logger.info(
+        f"Best parameters for {model_name}: {random_search.best_params_}"
+    )
+    logger.info(
+        f"Best score for {model_name}: {random_search.best_score_:.4f}"
+    )
+
     return random_search.best_estimator_
 
 
 def main():
     # Raw data
-    train = pd.read_csv(cfg['path']['train_path'])
-    test = pd.read_csv(cfg['path']['test_path'])
+    train = pd.read_csv(cfg["path"]["train_path"])
+    test = pd.read_csv(cfg["path"]["test_path"])
 
     train, test = feature_engineering(train, test)
 
@@ -244,16 +266,15 @@ def main():
     X = X.drop(columns=["ID"])
     test = test.drop(columns=["ID"])
 
-    # X, test = X.align(test, join="left", axis=1, fill_value=0)
+    n_splits = cfg["MODELS"]["n_splits"]
 
-    n_splits = 5
     # Use stratified k-fold to maintain class distribution
     kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
     # Define base models
     base_models = [
         # ("lgbm", LGBMClassifier(
-        #     random_state=42, 
+        #     random_state=42,
         #     class_weight='balanced',
         #     colsample_bytree=0.913,
         #     learning_rate=0.089,
@@ -266,7 +287,7 @@ def main():
         #     sumsample=0.987,
         #     )),
         # ("catboost", CatBoostClassifier(
-        #     verbose=0, 
+        #     verbose=0,
         #     random_state=42,
         #     scale_pos_weight=14,  # 14 au lieu de 5
         #     iterations=300,
@@ -274,47 +295,62 @@ def main():
         #     l2_leaf_reg=5.21,
         #     learning_rate=0.107,
         #     )),
-        ("catboost", CatBoostClassifier(
-            verbose=0, 
-            random_state=42,
-            scale_pos_weight=5,
-            iterations=360,
-            depth=9,
-            l2_leaf_reg=10.2,
-            learning_rate=0.106,
-            )),
-        ("logreg", LogisticRegression(
-            class_weight="balanced", 
-            random_state=42, 
-            max_iter = 5000,
-            solver="newton-cholesky",
-            penalty="l2",
-            C=5,    # pas sur.
-            )),
-        ("mlp", MLPClassifier(
-            random_state=42,
-            max_iter=1500,
-            activation="relu",
-            alpha=0.0059,
-            hidden_layer_sizes=(128,),
-            learning_rate_init=0.0043,
-            )),
-        ("xgb", XGBClassifier(
-            random_state=42,
-            max_depth=5,
-            n_estimators=200,
-            min_child_weight=8,
-            scale_pos_weight=5,
-            learning_rate=0.011,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            gamma=0.4,
-            )),
+        (
+            "catboost",
+            CatBoostClassifier(
+                verbose=0,
+                random_state=42,
+                scale_pos_weight=5,
+                iterations=360,
+                depth=9,
+                l2_leaf_reg=10.2,
+                learning_rate=0.106,
+            ),
+        ),
+        (
+            "logreg",
+            LogisticRegression(
+                class_weight="balanced",
+                random_state=42,
+                max_iter=5000,
+                solver="newton-cholesky",
+                penalty="l2",
+                C=5,  # pas sur.
+            ),
+        ),
+        (
+            "mlp",
+            MLPClassifier(
+                random_state=42,
+                max_iter=1500,
+                activation="relu",
+                alpha=0.0059,
+                hidden_layer_sizes=(128,),
+                learning_rate_init=0.0043,
+            ),
+        ),
+        (
+            "xgb",
+            XGBClassifier(
+                random_state=42,
+                max_depth=5,
+                n_estimators=200,
+                min_child_weight=8,
+                scale_pos_weight=5,
+                learning_rate=0.011,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                gamma=0.4,
+            ),
+        ),
     ]
 
     # Get a smaller subset for hyperparameter tuning
     from sklearn.model_selection import train_test_split
-    X_tune, _, y_tune, _ = train_test_split(X, y, test_size=0.7, random_state=42, stratify=y)
+
+    X_tune, _, y_tune, _ = train_test_split(
+        X, y, test_size=0.7, random_state=42, stratify=y
+    )
 
     # Tune hyperparameters and update the models
     tuned_models = []
@@ -334,17 +370,17 @@ def main():
             logger.info(f" - Fold {fold + 1}")
             X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
             X_val, y_val = X.iloc[val_idx], y.iloc[val_idx]
-            
+
             # No need for additional scaling since we already did it in feature engineering
             calibrated_model = CalibratedClassifierCV(
                 estimator=model,
-                method='isotonic',  # or 'sigmoid'
-                cv=5
+                method="isotonic",  # or 'sigmoid'
+                cv=5,
             )
             calibrated_model.fit(X_train, y_train)
 
             # For predictions
-            if hasattr(calibrated_model, 'predict_proba'):
+            if hasattr(calibrated_model, "predict_proba"):
                 y_pred_prob = calibrated_model.predict_proba(X_val)[:, 1]
                 y_pred_val = y_pred_prob  # Use probabilities directly for RMSE
                 test_pred_prob = calibrated_model.predict_proba(test)[:, 1]
@@ -361,7 +397,10 @@ def main():
             fold_rmse_scores.append(rmse)
 
             # Additional metrics for information
-            y_pred = (y_pred_prob > 0.5).astype(int)  # Convert probabilities to class predictions
+            y_pred = (y_pred_prob > 0.5).astype(
+                int
+            )  # Convert probabilities to class predictions
+
             auc = roc_auc_score(y_val, y_pred_prob)
             precision = precision_score(y_val, y_pred)
             recall = recall_score(y_val, y_pred)
@@ -375,15 +414,19 @@ def main():
             )
 
         S_test[:, i] = S_test_i.mean(axis=1)
-        logger.info(f"Average RMSE for {name}: {np.mean(fold_rmse_scores):.4f}")
+        logger.info(
+            f"Average RMSE for {name}: {np.mean(fold_rmse_scores):.4f}"
+        )
 
     # Train the meta-model (stacker)
     logger.info("\n🎯 Training meta-model (Ridge) optimized for RMSE")
 
     # Tune the meta-model
     meta_model_params = {
-        'alpha': uniform(0.001, 10),  # Wider range to find optimal regularization
-        'fit_intercept': [True, False]
+        "alpha": uniform(
+            0.001, 10
+        ),  # Wider range to find optimal regularization
+        "fit_intercept": [True, False],
     }
 
     meta_model = Ridge()
@@ -394,12 +437,16 @@ def main():
         cv=5,  # Increased from 3 to 5 for more robust validation
         verbose=1,
         random_state=42,
-        scoring='neg_mean_squared_error'
+        scoring="neg_mean_squared_error",
     )
 
     meta_model_search.fit(S_train, y)
-    logger.info(f"Best meta-model parameters: {meta_model_search.best_params_}")
-    logger.info(f"Best meta-model RMSE: {np.sqrt(-meta_model_search.best_score_):.4f}")
+    logger.info(
+        f"Best meta-model parameters: {meta_model_search.best_params_}"
+    )
+    logger.info(
+        f"Best meta-model RMSE: {np.sqrt(-meta_model_search.best_score_):.4f}"
+    )
     meta_model = meta_model_search.best_estimator_
 
     # Final prediction using the tuned meta-model
@@ -427,7 +474,12 @@ def main():
 
     # Create submission file
     submission = pd.DataFrame({"ID": test_ids, "TARGET": final_preds})
-    submission.to_csv("output/submission_training_12_2.csv", index=False)
+    submission.to_csv("output/submission_training_12.csv", index=False)
+    submission.to_csv(
+        f"output/submission_"
+        f"{str(cfg['FEATURE_ENGINEERING']['version']) + str(cfg['FEATURE_ENGINEERING']['version_training'])}.csv",
+        index=False,
+    )
 
 
 if __name__ == "__main__":

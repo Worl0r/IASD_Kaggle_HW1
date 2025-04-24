@@ -6,5 +6,8 @@ path:
 
 FEATURE_ENGINEERING:
   version: 4.0
-  version_training: 0.5
+  version_training: .12
   mode: "manual" # or "manual"
+
+MODELS:
+  n_splits: 5
