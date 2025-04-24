@@ -78,8 +78,8 @@ def feature_engineering(df_train, df_test):
 
     # 3. FEATURE TRANSFORMATIONS
     # Apply log transformation to highly skewed variables
-    for col in ["var1", "var4", "var5"]:
-    # for col in ["var1", "var4"]:
+    # for col in ["var1", "var4", "var5"]:
+    for col in ["var1", "var4"]:
         df_train[f'{col}_log'] = np.log(df_train[col] + 1)  # Adding 1 to avoid log(0)
         df_test[f'{col}_log'] = np.log(df_test[col] + 1)  # Adding 1 to avoid log(0)
 
@@ -114,7 +114,7 @@ def feature_engineering(df_train, df_test):
     
     # Identify numerical columns to scale (original and derived)
     # scale_cols = num_cols + [f'{col}_log' for col in ["var1", "var4", "var5"]] + [f'{col}_boxcox' for col in box_cox_cols]
-    scale_cols = [f'{col}_log' for col in ["var1", "var4", "var5"]] + [f'{col}_boxcox' for col in box_cox_cols]
+    scale_cols = [f'{col}_log' for col in ["var1", "var4"]] + [f'{col}_boxcox' for col in box_cox_cols]
     
     # Fit scaler on training data
     scaler.fit(df_train[scale_cols])
@@ -339,7 +339,7 @@ def main():
             calibrated_model = CalibratedClassifierCV(
                 estimator=model,
                 method='isotonic',  # or 'sigmoid'
-                cv=3
+                cv=5
             )
             calibrated_model.fit(X_train, y_train)
 
@@ -427,7 +427,7 @@ def main():
 
     # Create submission file
     submission = pd.DataFrame({"ID": test_ids, "TARGET": final_preds})
-    submission.to_csv("output/submission_training_12.csv", index=False)
+    submission.to_csv("output/submission_training_12_2.csv", index=False)
 
 
 if __name__ == "__main__":
