@@ -86,8 +86,8 @@ def feature_engineering(df_train, df_test):
 
     # Apply Box-Cox transformation to normalize distributions
     pt = PowerTransformer(method='box-cox')
-    box_cox_cols = ['var2', 'var6']  # Columns identified with extreme values
-    # box_cox_cols = ['var2', 'var6', "var5"]  # Columns identified with extreme values
+    # box_cox_cols = ['var2', 'var6']  # Columns identified with extreme values
+    box_cox_cols = ['var2', 'var6', "var5"]  # Columns identified with extreme values
 
     # Create a temporary array for fitting the transformer (Box-Cox needs positive values)
     temp_train_data = df_train[box_cox_cols].copy()
